@@ -1,9 +1,9 @@
-import { initThree, setMoodProgress, setPaused as setThreePaused } from "./threeScene.js";
-import { initWorld, worldTick, handleWorldPointer, worldCancelPointer, worldSetFocusToggle, worldStep, getInteractTarget } from "./world.js";
-import { initUI, uiTick, toast, setVisible, setStoryArchive, setComms, setDialog } from "./ui.js";
+import { initThree, setMoodProgress, setPaused as setThreePaused, setQuality as setThreeQuality } from "./threeScene.js";
+import { initWorld, worldTick, handleWorldPointer, worldCancelPointer, worldSetFocusToggle, worldSetStick } from "./world.js";
+import { initUI, uiTick, toast } from "./ui.js";
 import { loadSave, saveNow, resetSave } from "./save.js";
-import { npcMakeState, npcTalk } from "./npc.js";
-import { startMissionFromTarget, missionTick, handleMissionPointer, missionCancelPointer, missionSetPaused } from "./missions.js";
+import { openNpcDialog, npcTick } from "./npc.js";
+import { startMission, missionTick, handleMissionPointer, missionCancelPointer, missionSetPaused } from "./missions.js";
 
 export const game = {
   mode: "TITLE", // TITLE | WORLD | MISSION | RESULT
@@ -12,294 +12,278 @@ export const game = {
   money: 0,
   heat: 0,
   frags: 0,
-
   district: 7,
-  districtPenalty: 0, // increases overworld harshness on special fails
-
   globalProgress: 0,
+  storyIndex: 0,
   missionsDone: 0,
-  steps: 0,
 
-  trust: { nyx: 0, ghost: 0 },
+  settings: {
+    quality: "perf", // "perf" | "quality"
+    autosave: true
+  },
 
-  settings: { quality: "perf", autosave: true },
-
-  story: [],
-  npcState: npcMakeState(),
+  upgrades: { buffer: 0, amplifier: 0, pulse: 0 },
+  selectedNodeId: null,
 
   canvases: { three: null, world: null, mission: null },
-  ctx: { world: null, mission: null },
-
-  lastMission: null
+  ctx: { world: null, mission: null }
 };
 
 const $ = (id) => document.getElementById(id);
 
 /* ---------------- MODE ---------------- */
-function setMode(next){
+export function setMode(next) {
   if (game.mode === next) return;
 
+  // kill pointer capture on switch
   worldCancelPointer?.();
   missionCancelPointer?.();
 
   game.mode = next;
 
-  const worldOn = (next === "TITLE" || next === "WORLD");
-  const missionOn = (next === "MISSION");
-
-  if (game.canvases.world){
-    game.canvases.world.style.display = worldOn ? "block" : "none";
-    game.canvases.world.style.pointerEvents = worldOn ? "auto" : "none";
-  }
-  if (game.canvases.mission){
-    game.canvases.mission.style.display = missionOn ? "block" : "none";
-    game.canvases.mission.style.pointerEvents = missionOn ? "auto" : "none";
+  // canvas visibility + input routing
+  if (game.canvases.world) {
+    const on = next === "TITLE" || next === "WORLD";
+    game.canvases.world.style.display = on ? "block" : "none";
+    game.canvases.world.style.pointerEvents = on ? "auto" : "none";
   }
 
-  setVisible("title", next === "TITLE");
-  setVisible("hudTop", next !== "TITLE");
+  if (game.canvases.mission) {
+    const on = next === "MISSION";
+    game.canvases.mission.style.display = on ? "block" : "none";
+    game.canvases.mission.style.pointerEvents = on ? "auto" : "none";
+  }
 
-  setVisible("leftPanel", next === "WORLD");
-  setVisible("rightPanel", next === "WORLD");
+  // UI panels
+  const toggle = (id, show) => {
+    const el = $(id);
+    if (el) el.classList.toggle("hidden", !show);
+  };
 
-  setVisible("missionHud", next === "MISSION");
-  setVisible("result", next === "RESULT");
+  toggle("title", next === "TITLE");
+  toggle("hudTop", next !== "TITLE");
 
-  setVisible("dpad", next === "WORLD");
+  toggle("leftPanel", next === "WORLD");
+  toggle("rightPanel", next === "WORLD");
 
+  toggle("missionHud", next === "MISSION");
+  toggle("result", next === "RESULT");
+
+  // Pause beim Wechsel aus
   setPaused(false);
 }
 
 /* ---------------- PAUSE ---------------- */
-function setPaused(p){
+export function setPaused(p) {
   game.paused = !!p;
   missionSetPaused?.(game.paused);
   setThreePaused?.(game.paused);
+
   toast(game.paused ? "PAUSED." : "RESUMED.");
 }
-function togglePause(){ setPaused(!game.paused); }
 
-/* ---------------- PERF / DPR ---------------- */
-function getDpr(){
+export function togglePause() {
+  setPaused(!game.paused);
+}
+
+/* ---------------- QUALITY / DPR ---------------- */
+function getDpr() {
   const raw = window.devicePixelRatio || 1;
   const cap = (game.settings.quality === "perf") ? 1.15 : 1.6;
   return Math.max(1, Math.min(cap, raw));
 }
 
-function resizeAll(){
+function applyQualityToThree() {
+  setThreeQuality?.({
+    dpr: getDpr(),
+    perf: game.settings.quality === "perf"
+  });
+}
+
+function resizeAll() {
   const dpr = getDpr();
 
-  for (const key of ["three","world","mission"]){
+  // world + mission = 2D canvases
+  for (const key of ["world", "mission"]) {
     const canvas = game.canvases[key];
     if (!canvas) continue;
     canvas.width = Math.floor(window.innerWidth * dpr);
     canvas.height = Math.floor(window.innerHeight * dpr);
+
     const ctx = game.ctx[key];
-    if (ctx) ctx.setTransform(dpr,0,0,dpr,0,0);
+    if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
+
+  // threeCanvas: 2D background in our threeScene.js
+  if (game.canvases.three) {
+    game.canvases.three.width = Math.floor(window.innerWidth * dpr);
+    game.canvases.three.height = Math.floor(window.innerHeight * dpr);
+    // no ctx transform needed, threeScene reads canvas size / dpr
+  }
+
+  applyQualityToThree();
 }
 
 /* ---------------- POINTER ROUTING ---------------- */
-function bindCanvasPointers(canvas, handler, onlyWhen){
+function bindCanvasPointers(canvas, handler, onlyWhen) {
   if (!canvas) return;
-  const opts = { passive:false };
+  const opts = { passive: false };
 
-  canvas.addEventListener("pointerdown", (e)=>{
+  const fire = (type, e) => {
     if (!onlyWhen()) return;
     if (game.paused) return;
+    e.preventDefault();
+    handler(type, e);
+  };
+
+  canvas.addEventListener("pointerdown", (e) => {
+    if (!onlyWhen()) return;
     e.preventDefault();
     try { canvas.setPointerCapture(e.pointerId); } catch {}
-    handler("down", e, game);
+    handler("down", e);
   }, opts);
 
-  canvas.addEventListener("pointermove", (e)=>{
-    if (!onlyWhen()) return;
-    if (game.paused) return;
-    e.preventDefault();
-    handler("move", e, game);
-  }, opts);
+  canvas.addEventListener("pointermove", (e) => fire("move", e), opts);
 
-  canvas.addEventListener("pointerup", (e)=>{
+  canvas.addEventListener("pointerup", (e) => {
     if (!onlyWhen()) return;
     e.preventDefault();
     try { canvas.releasePointerCapture(e.pointerId); } catch {}
-    handler("up", e, game);
+    handler("up", e);
   }, opts);
 
-  canvas.addEventListener("pointercancel", (e)=>{
+  canvas.addEventListener("pointercancel", (e) => {
     if (!onlyWhen()) return;
     e.preventDefault();
     try { canvas.releasePointerCapture(e.pointerId); } catch {}
-    handler("cancel", e, game);
+    handler("cancel", e);
   }, opts);
 }
 
 /* ---------------- BOOT ---------------- */
-function boot(){
+function boot() {
   game.canvases.three = $("threeCanvas");
   game.canvases.world = $("worldCanvas");
   game.canvases.mission = $("missionCanvas");
 
-  if (game.canvases.world) game.ctx.world = game.canvases.world.getContext("2d", { alpha:true });
-  if (game.canvases.mission) game.ctx.mission = game.canvases.mission.getContext("2d", { alpha:true });
+  if (game.canvases.world) game.ctx.world = game.canvases.world.getContext("2d", { alpha: true });
+  if (game.canvases.mission) game.ctx.mission = game.canvases.mission.getContext("2d", { alpha: true });
 
-  // load save
+  // load save (values only)
   const saved = loadSave();
-  if (saved){
-    Object.assign(game, saved);
-    // repair missing fields for safety
-    game.settings ||= { quality:"perf", autosave:true };
-    game.trust ||= { nyx:0, ghost:0 };
-    game.story ||= [];
-    game.npcState ||= npcMakeState();
-    game.canvases = { three: game.canvases.three, world: game.canvases.world, mission: game.canvases.mission };
-    game.ctx = { world: game.ctx.world, mission: game.ctx.mission };
+  if (saved) {
+    const { upgrades, settings, ...rest } = saved;
+    Object.assign(game, rest);
+    if (upgrades) Object.assign(game.upgrades, upgrades);
+    if (settings) Object.assign(game.settings, settings);
   }
 
+  // init modules
   initUI({
-    start: () => { setMode("WORLD"); toast("NIGHT CITY ONLINE."); },
-    reset: () => { if (confirm("WARNING: PURGE ALL DATA?")) { resetSave(); location.reload(); } },
-    back: () => setMode("WORLD"),
-    closeDialog: () => setDialog({ name:"SIGNAL", role:"", text:"", choices:[], log:[] }),
+    enterWorld: () => { setMode("WORLD"); toast("NIGHT CITY ONLINE."); },
+    resetAll: () => {
+      if (confirm("WARNING: PURGE ALL DATA?")) {
+        resetSave();
+        location.reload();
+      }
+    },
 
-    talk: () => npcTalk(game, { getInteractTarget: () => getInteractTarget(game) }),
-    mission: () => {
-      const t = getInteractTarget(game);
-      if (!t || t.type !== "mission"){
-        toast("MOVE NEAR A MISSION NODE.");
+    setMode,
+    openNpcDialog,
+
+    startMission: () => {
+      if (!game.selectedNodeId) {
+        toast("SELECT A NODE FIRST.");
         return;
       }
-      const info = startMissionFromTarget(t);
-      if (!info){
-        toast("MISSION LINK FAILED.");
-        return;
-      }
+      startMission("cache");
       setMode("MISSION");
+      toast("MISSION LINKED.");
     },
 
-    focus: () => worldSetFocusToggle?.(),
-    pause: () => togglePause(),
-    quality: () => {
+    saveNow,
+    togglePause,
+    toggleQuality: () => {
       game.settings.quality = (game.settings.quality === "perf") ? "quality" : "perf";
+      if (game.settings.autosave) saveNow();
       resizeAll();
-      if (game.settings.autosave) saveNow(stripRuntime(game));
       toast(game.settings.quality === "perf" ? "QUALITY: PERF" : "QUALITY: SHARP");
+      const b = $("btnQuality");
+      if (b) b.textContent = game.settings.quality === "perf" ? "PERF" : "SHARP";
+      b?.setAttribute("data-mode", game.settings.quality);
     },
-    autosave: () => {
+    toggleAutosave: () => {
       game.settings.autosave = !game.settings.autosave;
-      if (game.settings.autosave) saveNow(stripRuntime(game));
+      if (game.settings.autosave) saveNow();
       toast(game.settings.autosave ? "AUTO: ON" : "AUTO: OFF");
+      const b = $("btnSave");
+      if (b) b.textContent = game.settings.autosave ? "AUTO" : "MANUAL";
     },
+    focusToggle: () => worldSetFocusToggle?.(),
 
-    step: (dir) => worldStep(game, dir)
+    // Stick -> world
+    moveStick: (vx, vy) => worldSetStick(vx, vy)
   });
 
-  initThree(game.canvases.three, () => game.settings.quality);
+  // background renderer
+  if (game.canvases.three) initThree(game.canvases.three, { dpr: getDpr(), perf: game.settings.quality === "perf" });
 
-  initWorld(game);
+  initWorld();
 
+  // route pointers
   bindCanvasPointers(game.canvases.world, handleWorldPointer, () => game.mode === "TITLE" || game.mode === "WORLD");
   bindCanvasPointers(game.canvases.mission, handleMissionPointer, () => game.mode === "MISSION");
 
-  // keyboard movement (PC)
-  window.addEventListener("keydown", (e)=>{
-    if (game.mode !== "WORLD") return;
-    if (e.key === "w" || e.key === "ArrowUp") worldStep(game,"up");
-    if (e.key === "s" || e.key === "ArrowDown") worldStep(game,"down");
-    if (e.key === "a" || e.key === "ArrowLeft") worldStep(game,"left");
-    if (e.key === "d" || e.key === "ArrowRight") worldStep(game,"right");
-    if (e.key === "Escape") togglePause();
-  });
+  // result button
+  const btnBack = $("btnBackToCity");
+  btnBack?.addEventListener("click", () => setMode("WORLD"));
 
   resizeAll();
   window.addEventListener("resize", resizeAll);
 
-  setMode("TITLE");
   toast("SYSTEM READY.");
+  setMode("TITLE");
 
   requestAnimationFrame(loop);
 }
 
 /* ---------------- LOOP ---------------- */
 let lastTime = 0;
-function loop(tNow){
-  const dt = Math.min(0.033, ((tNow - lastTime)/1000) || 0);
+function loop(tNow) {
+  const dt = Math.min(0.033, ((tNow - lastTime) / 1000) || 0);
   lastTime = tNow;
 
-  game.globalProgress = Math.min(1, game.missionsDone / 10);
+  // day/night progression (simple)
+  game.globalProgress = Math.min(1, game.missionsDone / 12);
   setMoodProgress(game.globalProgress);
 
-  if (!game.paused){
-    if (game.mode === "WORLD"){
-      worldTick(dt, game);
+  if (!game.paused) {
+    if (game.mode === "WORLD" || game.mode === "TITLE") {
+      worldTick(dt);
+      npcTick?.(dt);
     }
 
-    if (game.mode === "MISSION"){
-      missionTick(dt, game, (resultData)=>{
-        const out = resultData.apply();
-
-        // apply
-        game.money = out.money;
-        game.frags = out.frags;
-        game.heat = out.heat;
-        game.lastMission = out.lastMission;
-
-        // trust & fail logic
-        if (resultData.win){
-          game.missionsDone++;
-          game.npcState.failsInRow = 0;
-          // trust up for mission giver
-          if (game.lastMission?.special) game.trust.nyx = clamp(game.trust.nyx + 1, -10, 10);
-          else game.trust.ghost = clamp(game.trust.ghost + 1, -10, 10);
-          game.story.push(`MISSION WIN: ${resultData.kind}${resultData.special ? " (SPECIAL)" : ""}`);
-        } else {
-          game.npcState.failsInRow++;
-          // global trust decay when you’re sloppy
-          game.trust.nyx = clamp(game.trust.nyx - 1, -10, 10);
-          game.trust.ghost = clamp(game.trust.ghost - 1, -10, 10);
-          game.story.push(`MISSION FAIL: ${resultData.kind}${resultData.special ? " (SPECIAL) — DISTRICT PUNISH" : ""}`);
-        }
-
-        // story archive UI
-        setStoryArchive(game.story.slice(-18));
-
-        // result text
-        const res = $("resText");
-        if (res){
-          const lm = game.lastMission;
-          res.textContent =
-            `Result: ${resultData.win ? "SUCCESS" : "FAIL"}\n` +
-            `Type: ${resultData.kind}${resultData.special ? " ★" : ""}\n` +
-            `Score: ${lm?.score ?? 0}\n` +
-            `Payout: E$ ${lm?.money ?? 0}\n` +
-            `Frags: +${lm?.frags ?? 0}\n` +
-            `Heat: +${lm?.heat ?? 0}\n` +
-            (resultData.special && !resultData.win ? `\nDistrict Punish: +Penalty (${game.districtPenalty})` : "");
-        }
-
-        if (game.settings.autosave) saveNow(stripRuntime(game));
-
+    if (game.mode === "MISSION") {
+      missionTick(dt, (resultData) => {
+        Object.assign(game, resultData.apply(game));
+        game.missionsDone += 1;
+        if (game.settings.autosave) saveNow();
         setMode("RESULT");
+        const res = $("resText");
+        if (res) res.textContent = `Score applied.\nEddies + Frags updated.\nHeat increased.`;
       });
     }
+  } else {
+    // render world even if paused (nice)
+    if (game.mode === "WORLD" || game.mode === "TITLE") worldTick(0);
   }
 
-  uiTick(game);
+  uiTick(dt);
   requestAnimationFrame(loop);
 }
 
-/* ---------------- SAVE: strip runtime refs ---------------- */
-function stripRuntime(g){
-  const clone = JSON.parse(JSON.stringify(g));
-  clone.canvases = { three:null, world:null, mission:null };
-  clone.ctx = { world:null, mission:null };
-  return clone;
-}
-
-function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
-
-if (document.readyState === "loading"){
+if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", boot);
 } else {
   boot();
-      }
+    }
