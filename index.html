@@ -4,13 +4,14 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
   <meta name="theme-color" content="#05070a"/>
-  <title>NEON ALLEY — District Runner</title>
+  <title>NEON ALLEY — District Run</title>
 
   <link rel="stylesheet" href="css/style.css">
   <script type="module" src="js/core.js"></script>
 </head>
 <body>
   <main id="app" class="scanlines">
+
     <div id="canvas-container">
       <canvas id="threeCanvas"></canvas>
       <canvas id="worldCanvas"></canvas>
@@ -21,28 +22,31 @@
       <!-- TOP HUD -->
       <header id="hudTop" class="hud hidden">
         <div class="chip panel">DISTRICT <b id="hudDistrict">Sector-07</b></div>
-        <div class="chip panel">TIME <b id="hudTime">DAY</b></div>
+        <div class="chip panel">
+          TIME <b id="hudTime">DAY</b>
+          <span id="hudCelestial" class="celestial">☀</span>
+        </div>
         <div class="chip panel">EDDIES <b id="hudMoney">E$ 0</b></div>
         <div class="chip panel">HEAT <b id="hudHeat">0%</b></div>
         <div class="chip panel pink">FRAGS <b id="hudFrags">0</b></div>
-        <div class="chip panel">TRUST <b id="hudTrust">NYX 0 / GHOST 0</b></div>
+        <div class="chip panel">FPS <b id="hudFps">—</b></div>
       </header>
 
       <!-- TITLE -->
       <section id="title" class="centerWrap">
         <div class="panel card">
           <h1 class="logo">NEON ALLEY</h1>
-          <h2 class="sub">MAP-B // TILE RUNNER // STORY FRAGMENTS</h2>
+          <h2 class="sub">TABLET-FIRST // DISTRICT RUN</h2>
           <p class="muted">
-            Tablet: Swipe/Drag zum Blick bewegen · Tap zum Interagieren.<br>
-            Bewegung: Onscreen D-Pad oder WASD/Arrow (PC).
+            Stick links: laufen · Tap auf Nodes (oder Liste).<br>
+            Dann: <b>Start Mission</b> drücken.
           </p>
           <div class="row">
             <button type="button" id="btnStart" class="btn yellow">Enter Night City</button>
             <button type="button" id="btnReset" class="btn pink">Reset Save</button>
           </div>
           <p class="muted small" style="margin-top:10px">
-            Tipp: Tablet Performance → unten <b>PERF</b> lassen.
+            Tipp: Wenn’s ruckelt → unten <b>PERF</b> lassen.
           </p>
         </div>
       </section>
@@ -57,10 +61,12 @@
         </header>
 
         <div class="row leftRow">
-          <button type="button" id="btnTalk" class="btn small pink">Talk</button>
-          <button type="button" id="btnMission" class="btn small yellow">Start Mission</button>
-          <button type="button" id="btnFocus" class="btn small">Focus</button>
+          <button type="button" id="btnTalk" class="btn small pink">TALK</button>
+          <button type="button" id="btnMission" class="btn small yellow">START MISSION</button>
+          <button type="button" id="btnFocus" class="btn small">FOCUS</button>
         </div>
+
+        <div id="nodeList" class="list" aria-label="Nodes"></div>
 
         <div class="archive">
           <div class="muted small" style="margin-bottom:6px">STORY ARCHIVE</div>
@@ -75,16 +81,15 @@
             <h3 class="sideTitle pinkText" id="npcName">SIGNAL</h3>
             <div class="muted small" id="npcRole">Bewege dich zu einem NPC / Ort…</div>
           </div>
-          <button type="button" id="btnCloseDialog" class="btn small">X</button>
+          <button type="button" id="btnCloseRight" class="btn small">X</button>
         </header>
 
+        <div id="npcPortrait" class="npcPortrait" aria-label="NPC Portrait"></div>
         <div id="dialogText" class="dialog">Keine Daten empfangen.</div>
-
-        <div id="dialogChoices" class="choices"></div>
 
         <div class="archive">
           <div class="muted small" style="margin-bottom:6px">RUN LOG</div>
-          <div id="dialogLog"></div>
+          <div id="runLog"></div>
         </div>
       </aside>
 
@@ -94,7 +99,7 @@
         <div class="chip panel">OBJECTIVE <b id="mHudObjective">—</b></div>
         <div class="chip panel pink" id="mHudTimerBox">TIMER <b id="mHudTimer">—</b></div>
         <div class="chip panel">SCORE <b id="mHudScore">0</b></div>
-        <div class="chip panel">STATUS <b id="mHudStatus">—</b></div>
+        <div class="chip panel">ABILITY <b id="mHudAbility">—</b></div>
       </header>
 
       <!-- RESULT -->
@@ -108,21 +113,17 @@
         </div>
       </section>
 
-      <!-- ON-SCREEN D-PAD (Tablet friendly) -->
-      <div id="dpad" class="dpad hidden" aria-label="D-Pad">
-        <button class="dbtn" data-dir="up">▲</button>
-        <div class="drow">
-          <button class="dbtn" data-dir="left">◀</button>
-          <button class="dbtn" data-dir="down">▼</button>
-          <button class="dbtn" data-dir="right">▶</button>
-        </div>
-      </div>
-
       <!-- BOTTOM BAR -->
       <div id="bottomBar" class="bottomBar">
-        <div id="commsTicker" class="panel pink comms">
-          <b>COMMS:</b> Nyx: “Wir starten sauber. Aber die Stadt… bleibt nie sauber.”
+        <!-- MOVE STICK -->
+        <div id="moveStick" class="stick" aria-label="Move Stick">
+          <div class="stickKnob"></div>
         </div>
+
+        <div id="commsTicker" class="panel pink comms">
+          <b>COMMS:</b> Nyx: “Move. Don’t pose. The city watches movement.”
+        </div>
+
         <button type="button" id="btnQuality" class="btn small" data-mode="perf">PERF</button>
         <button type="button" id="btnPause" class="btn small">PAUSE</button>
         <button type="button" id="btnSave" class="btn small">AUTO</button>
@@ -132,4 +133,4 @@
     </div>
   </main>
 </body>
-          </html>
+</html>
