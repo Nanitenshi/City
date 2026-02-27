@@ -6,8 +6,7 @@
   <meta name="theme-color" content="#05070a"/>
   <title>NEON ALLEY — District Run</title>
 
-  <link rel="stylesheet" href="css/style.css">
-  <script type="module" src="js/core.js"></script>
+  <link rel="stylesheet" href="./css/style.css">
 </head>
 <body>
   <main id="app" class="scanlines">
@@ -22,10 +21,7 @@
       <!-- TOP HUD -->
       <header id="hudTop" class="hud hidden">
         <div class="chip panel">DISTRICT <b id="hudDistrict">Sector-07</b></div>
-        <div class="chip panel">
-          TIME <b id="hudTime">DAY</b>
-          <span id="hudCelestial" class="celestial">☀</span>
-        </div>
+        <div class="chip panel">TIME <b id="hudTime">DAY</b></div>
         <div class="chip panel">EDDIES <b id="hudMoney">E$ 0</b></div>
         <div class="chip panel">HEAT <b id="hudHeat">0%</b></div>
         <div class="chip panel pink">FRAGS <b id="hudFrags">0</b></div>
@@ -83,10 +79,7 @@
           </div>
           <button type="button" id="btnCloseRight" class="btn small">X</button>
         </header>
-
-        <div id="npcPortrait" class="npcPortrait" aria-label="NPC Portrait"></div>
         <div id="dialogText" class="dialog">Keine Daten empfangen.</div>
-
         <div class="archive">
           <div class="muted small" style="margin-bottom:6px">RUN LOG</div>
           <div id="runLog"></div>
@@ -99,7 +92,7 @@
         <div class="chip panel">OBJECTIVE <b id="mHudObjective">—</b></div>
         <div class="chip panel pink" id="mHudTimerBox">TIMER <b id="mHudTimer">—</b></div>
         <div class="chip panel">SCORE <b id="mHudScore">0</b></div>
-        <div class="chip panel">ABILITY <b id="mHudAbility">—</b></div>
+        <div class="chip panel">STATUS <b id="mHudAbility">—</b></div>
       </header>
 
       <!-- RESULT -->
@@ -115,15 +108,9 @@
 
       <!-- BOTTOM BAR -->
       <div id="bottomBar" class="bottomBar">
-        <!-- MOVE STICK -->
-        <div id="moveStick" class="stick" aria-label="Move Stick">
-          <div class="stickKnob"></div>
-        </div>
-
         <div id="commsTicker" class="panel pink comms">
           <b>COMMS:</b> Nyx: “Move. Don’t pose. The city watches movement.”
         </div>
-
         <button type="button" id="btnQuality" class="btn small" data-mode="perf">PERF</button>
         <button type="button" id="btnPause" class="btn small">PAUSE</button>
         <button type="button" id="btnSave" class="btn small">AUTO</button>
@@ -132,5 +119,50 @@
       <div id="toast" class="toast hidden"></div>
     </div>
   </main>
+
+  <!-- HARD FAILSAFE: selbst wenn core.js nicht bootet, bekommst du Feedback -->
+  <script>
+    (function () {
+      const btn = document.getElementById("btnStart");
+      const toast = (msg) => {
+        const t = document.getElementById("toast");
+        if (!t) return;
+        t.textContent = msg;
+        t.classList.remove("hidden");
+        setTimeout(() => t.classList.add("hidden"), 2500);
+      };
+
+      if (btn) {
+        btn.addEventListener("click", (e) => {
+          e.preventDefault();
+          if (window.__enterCity) window.__enterCity();
+          else toast("BOOT NOT READY (core.js not loaded). Check BOOT ERROR.");
+        }, { passive: false });
+      }
+
+      window.addEventListener("error", (ev) => {
+        toast("RUNTIME ERROR: " + (ev.message || "unknown"));
+      });
+      window.addEventListener("unhandledrejection", (ev) => {
+        toast("BOOT ERROR: " + (ev.reason?.message || String(ev.reason)));
+      });
+    })();
+  </script>
+
+  <!-- module loader with visible error -->
+  <script type="module">
+    const toast = (msg) => {
+      const t = document.getElementById("toast");
+      if (!t) return;
+      t.textContent = msg;
+      t.classList.remove("hidden");
+      setTimeout(() => t.classList.add("hidden"), 4000);
+    };
+
+    import("./js/core.js").catch((err) => {
+      console.error(err);
+      toast("BOOT ERROR (core.js): " + (err?.message || String(err)));
+    });
+  </script>
 </body>
 </html>
