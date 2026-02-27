@@ -6,8 +6,10 @@
   <meta name="theme-color" content="#05070a"/>
   <title>NEON ALLEY — District Run</title>
 
+  <!-- WICHTIG: Ordner muss exakt "css" heißen (klein) -->
   <link rel="stylesheet" href="./css/style.css">
 </head>
+
 <body>
   <main id="app" class="scanlines">
 
@@ -18,7 +20,8 @@
     </div>
 
     <div id="ui">
-      <!-- TOP HUD -->
+
+      <!-- HUD -->
       <header id="hudTop" class="hud hidden">
         <div class="chip panel">DISTRICT <b id="hudDistrict">Sector-07</b></div>
         <div class="chip panel">TIME <b id="hudTime">DAY</b></div>
@@ -62,12 +65,7 @@
           <button type="button" id="btnFocus" class="btn small">FOCUS</button>
         </div>
 
-        <div id="nodeList" class="list" aria-label="Nodes"></div>
-
-        <div class="archive">
-          <div class="muted small" style="margin-bottom:6px">STORY ARCHIVE</div>
-          <div id="storyArchive"></div>
-        </div>
+        <div id="nodeList" class="list"></div>
       </aside>
 
       <!-- RIGHT PANEL -->
@@ -80,25 +78,20 @@
           <button type="button" id="btnCloseRight" class="btn small">X</button>
         </header>
         <div id="dialogText" class="dialog">Keine Daten empfangen.</div>
-        <div class="archive">
-          <div class="muted small" style="margin-bottom:6px">RUN LOG</div>
-          <div id="runLog"></div>
-        </div>
       </aside>
 
       <!-- MISSION HUD -->
       <header id="missionHud" class="hud missionHud hidden">
         <div class="chip panel">MISSION <b id="mHudType">—</b></div>
         <div class="chip panel">OBJECTIVE <b id="mHudObjective">—</b></div>
-        <div class="chip panel pink" id="mHudTimerBox">TIMER <b id="mHudTimer">—</b></div>
+        <div class="chip panel pink">TIMER <b id="mHudTimer">—</b></div>
         <div class="chip panel">SCORE <b id="mHudScore">0</b></div>
-        <div class="chip panel">STATUS <b id="mHudAbility">—</b></div>
       </header>
 
       <!-- RESULT -->
       <section id="result" class="centerWrap hidden">
         <div class="panel card pink">
-          <h2 class="sub" style="margin-top:0">MISSION REPORT</h2>
+          <h2 class="sub">MISSION REPORT</h2>
           <div class="dialog" id="resText">—</div>
           <div class="row">
             <button type="button" id="btnBackToCity" class="btn yellow">Back to City</button>
@@ -111,7 +104,7 @@
         <div id="commsTicker" class="panel pink comms">
           <b>COMMS:</b> Nyx: “Move. Don’t pose. The city watches movement.”
         </div>
-        <button type="button" id="btnQuality" class="btn small" data-mode="perf">PERF</button>
+        <button type="button" id="btnQuality" class="btn small">PERF</button>
         <button type="button" id="btnPause" class="btn small">PAUSE</button>
         <button type="button" id="btnSave" class="btn small">AUTO</button>
       </div>
@@ -120,49 +113,57 @@
     </div>
   </main>
 
-  <!-- HARD FAILSAFE: selbst wenn core.js nicht bootet, bekommst du Feedback -->
+  <!-- ========================= -->
+  <!-- DEBUG + SAFE MODULE LOAD -->
+  <!-- ========================= -->
+
   <script>
     (function () {
-      const btn = document.getElementById("btnStart");
       const toast = (msg) => {
         const t = document.getElementById("toast");
         if (!t) return;
         t.textContent = msg;
         t.classList.remove("hidden");
-        setTimeout(() => t.classList.add("hidden"), 2500);
+        setTimeout(() => t.classList.add("hidden"), 10000);
       };
 
-      if (btn) {
-        btn.addEventListener("click", (e) => {
-          e.preventDefault();
-          if (window.__enterCity) window.__enterCity();
-          else toast("BOOT NOT READY (core.js not loaded). Check BOOT ERROR.");
-        }, { passive: false });
-      }
+      // Prüfe ob Datei existiert
+      fetch("./js/core.js", { cache: "no-store" })
+        .then(r => {
+          if (!r.ok) throw new Error("HTTP " + r.status + " " + r.statusText);
+          toast("core.js found ✓ (loading module...)");
+        })
+        .catch(err => {
+          toast("core.js NOT FOUND ✗ " + err.message);
+        });
 
+      // Globale Fehler sichtbar machen
       window.addEventListener("error", (ev) => {
         toast("RUNTIME ERROR: " + (ev.message || "unknown"));
       });
+
       window.addEventListener("unhandledrejection", (ev) => {
         toast("BOOT ERROR: " + (ev.reason?.message || String(ev.reason)));
       });
     })();
   </script>
 
-  <!-- module loader with visible error -->
   <script type="module">
     const toast = (msg) => {
       const t = document.getElementById("toast");
       if (!t) return;
       t.textContent = msg;
       t.classList.remove("hidden");
-      setTimeout(() => t.classList.add("hidden"), 4000);
+      setTimeout(() => t.classList.add("hidden"), 12000);
     };
 
-    import("./js/core.js").catch((err) => {
-      console.error(err);
-      toast("BOOT ERROR (core.js): " + (err?.message || String(err)));
-    });
+    import("./js/core.js")
+      .then(() => toast("core.js loaded ✓"))
+      .catch(err => {
+        console.error(err);
+        toast("BOOT ERROR (core.js): " + (err?.message || String(err)));
+      });
   </script>
+
 </body>
 </html>
