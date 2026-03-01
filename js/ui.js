@@ -1,4 +1,5 @@
 import { game } from "./core.js";
+import { saveNow } from "./save.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -22,52 +23,69 @@ export function initUI(_api) {
     api?.resetSave?.();
   });
 
-  // WORLD
+  // WORLD (LEFT PANEL)
+  $("btnTalk")?.addEventListener("click", () => {
+    api?.openNpcDialog?.(game.selectedNodeId);
+  });
+
   $("btnMission")?.addEventListener("click", (e) => {
     e.preventDefault();
     api?.startMission?.();
   }, { passive: false });
 
-  $("btnTalk")?.addEventListener("click", () => {
-    api?.openNpcDialog?.(game.selectedNodeId);
-  });
-
   $("btnFocus")?.addEventListener("click", () => {
     api?.focusToggle?.();
-  });
-
-  $("btnCloseRight")?.addEventListener("click", () => {
-    $("rightPanel")?.classList.add("hidden");
-  });
-
-  // BOTTOM BAR
-  $("btnPause")?.addEventListener("click", () => {
-    api?.togglePause?.();
-  });
-
-  $("btnQuality")?.addEventListener("click", () => {
-    api?.toggleQuality?.();
-  });
-
-  $("btnSave")?.addEventListener("click", () => {
-    api?.toggleAutosave?.();
   });
 
   // RESULT
   $("btnBackToCity")?.addEventListener("click", () => {
     api?.setMode?.("WORLD");
   });
+
+  // BOTTOM BAR
+  $("btnPause")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    api?.togglePause?.();
+  }, { passive: false });
+
+  $("btnQuality")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    api?.toggleQuality?.();
+  }, { passive: false });
+
+  $("btnSave")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    api?.toggleAutosave?.();
+  }, { passive: false });
+
+  // Autosave on background (nur wenn AUTO an)
+  window.addEventListener("visibilitychange", () => {
+    if (document.hidden && game.settings?.autosave) saveNow();
+  });
 }
 
 /* ============================= */
-/* COMMS TICKER FIX             */
+/* REQUIRED EXPORTS (BOOT FIXES) */
 /* ============================= */
 
 export function setComms(text) {
   const el = $("commsTicker");
   if (!el) return;
-
   el.innerHTML = `<b>COMMS:</b> ${text}`;
+}
+
+export function setDialog({ title = "SIGNAL", role = "", text = "—" } = {}) {
+  const npcName = $("npcName");
+  const npcRole = $("npcRole");
+  const dialogText = $("dialogText");
+
+  if (npcName) npcName.textContent = title;
+  if (npcRole) npcRole.textContent = role;
+  if (dialogText) dialogText.textContent = text;
+
+  // rechte Box sicher sichtbar machen, wenn wir Dialog setzen
+  const right = $("rightPanel");
+  right?.classList.remove("hidden");
 }
 
 /* ============================= */
@@ -80,25 +98,36 @@ export function updateNodeList(nodes, selectedId, onPick) {
 
   wrap.innerHTML = "";
 
-  nodes.forEach(n => {
+  nodes.forEach((n) => {
     const card = document.createElement("div");
     card.className = "nodeCard" + (n.id === selectedId ? " active" : "");
 
     const left = document.createElement("div");
+
     const name = document.createElement("div");
     name.className = "name";
     name.textContent = n.name;
 
     const meta = document.createElement("div");
     meta.className = "meta";
-    meta.textContent = n.tag;
+    meta.textContent = n.tag ?? "";
 
     left.appendChild(name);
     left.appendChild(meta);
 
+    const badge = document.createElement("div");
+    badge.className = "badge " + (n.type === "mission" ? "mission" : "npc");
+    badge.textContent = (n.type || "").toUpperCase();
+
     card.appendChild(left);
+    card.appendChild(badge);
 
     card.addEventListener("click", () => onPick(n.id));
+    card.addEventListener("touchstart", (e) => {
+      e.preventDefault();
+      onPick(n.id);
+    }, { passive: false });
+
     wrap.appendChild(card);
   });
 }
@@ -115,9 +144,7 @@ export function toast(msg) {
   el.classList.remove("hidden");
 
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => {
-    el.classList.add("hidden");
-  }, 2000);
+  toastTimer = setTimeout(() => el.classList.add("hidden"), 1800);
 }
 
 /* ============================= */
@@ -125,24 +152,20 @@ export function toast(msg) {
 /* ============================= */
 
 export function uiTick(dt = 0) {
-  $("hudDistrict") && ($("hudDistrict").textContent = `Sector-${game.district}`);
-  $("hudMoney") && ($("hudMoney").textContent = `E$ ${game.money}`);
-  $("hudHeat") && ($("hudHeat").textContent = `${game.heat}%`);
-  $("hudFrags") && ($("hudFrags").textContent = `${game.frags}`);
+  const d = $("hudDistrict"); if (d) d.textContent = `Sector-${String(game.district).padStart(2, "0")}`;
+  const m = $("hudMoney"); if (m) m.textContent = `E$ ${game.money}`;
+  const h = $("hudHeat"); if (h) h.textContent = `${game.heat}%`;
+  const f = $("hudFrags"); if (f) f.textContent = `${game.frags}`;
 
-  const timeLabel = $("hudTime");
-  if (timeLabel) {
-    if (game.globalProgress < 0.35) timeLabel.textContent = "DAY";
-    else if (game.globalProgress < 0.7) timeLabel.textContent = "DUSK";
-    else timeLabel.textContent = "NIGHT";
-  }
+  const t = $("hudTime");
+  if (t) t.textContent = game.globalProgress < 0.35 ? "DAY" : (game.globalProgress < 0.7 ? "DUSK" : "NIGHT");
 
-  const pauseBtn = $("btnPause");
-  if (pauseBtn) pauseBtn.textContent = game.paused ? "RESUME" : "PAUSE";
+  const q = $("btnQuality");
+  if (q) q.textContent = (game.settings?.quality === "perf") ? "PERF" : "SHARP";
 
-  const qualityBtn = $("btnQuality");
-  if (qualityBtn) qualityBtn.textContent = game.settings.quality === "perf" ? "PERF" : "SHARP";
+  const a = $("btnSave");
+  if (a) a.textContent = game.settings?.autosave ? "AUTO" : "MANUAL";
 
-  const autoBtn = $("btnSave");
-  if (autoBtn) autoBtn.textContent = game.settings.autosave ? "AUTO" : "MANUAL";
+  const p = $("btnPause");
+  if (p) p.textContent = game.paused ? "RESUME" : "PAUSE";
 }
