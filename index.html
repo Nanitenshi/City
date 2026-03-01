@@ -1,47 +1,44 @@
 <!doctype html>
 <html lang="de">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
-  <meta name="theme-color" content="#05070a"/>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
+  <meta name="theme-color" content="#05070a" />
+
+  <!-- Brutal gegen Cache (hilft bei GH Pages + Mobile Caches) -->
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+
   <title>NEON ALLEY — District Run</title>
 
-  <link rel="stylesheet" href="css/style.css">
+  <!-- Wichtig: ./ damit es immer relativ zum Repo-Root lädt -->
+  <link rel="stylesheet" href="./css/style.css?v=__BUILD__">
 
-  <!-- BOOT GUARD: zeigt Fehler, wenn core.js nicht hochkommt -->
-  <script>
-    window.__BOOT_OK__ = false;
-    window.addEventListener("error", (e) => {
-      const el = document.getElementById("bootError");
-      if (el) {
-        el.classList.remove("hidden");
-        el.textContent = "BOOT ERROR: " + (e?.message || "Unknown error");
-      }
-    });
-    window.addEventListener("unhandledrejection", (e) => {
-      const el = document.getElementById("bootError");
-      if (el) {
-        el.classList.remove("hidden");
-        el.textContent = "BOOT ERROR (promise): " + (e?.reason?.message || String(e?.reason || "Unknown"));
-      }
-    });
-    setTimeout(() => {
-      if (!window.__BOOT_OK__) {
-        const el = document.getElementById("bootError");
-        if (el) {
-          el.classList.remove("hidden");
-          el.textContent = "BOOT NOT READY (core.js not loaded). Check BOOT ERROR.";
-        }
-      }
-    }, 1200);
-  </script>
-
-  <script type="module" src="js/core.js"></script>
+  <style>
+    /* Fallback-Overlay falls Boot scheitert */
+    #bootErrorBox{
+      position:absolute; left:50%; top:78%;
+      transform:translate(-50%,-50%);
+      width:min(920px,94vw);
+      background:rgba(0,0,0,.55);
+      border:1px solid rgba(0,243,255,.35);
+      box-shadow: 0 0 22px rgba(0,243,255,.18);
+      color:#d9e7ee;
+      border-radius:12px;
+      padding:14px 16px;
+      z-index:9999;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Courier New", monospace;
+      display:none;
+      white-space: pre-wrap;
+      line-height: 1.35;
+    }
+    #bootErrorBox b{ color:#00f3ff; }
+  </style>
 </head>
 
 <body>
   <main id="app" class="scanlines">
-
     <div id="canvas-container">
       <canvas id="threeCanvas"></canvas>
       <canvas id="worldCanvas"></canvas>
@@ -72,8 +69,9 @@
             <button type="button" id="btnStart" class="btn yellow">Enter Night City</button>
             <button type="button" id="btnReset" class="btn pink">Reset Save</button>
           </div>
-
-          <div id="bootError" class="panel" style="margin-top:12px; padding:10px 12px;" class="hidden"></div>
+          <p class="muted small" style="margin-top:10px">
+            Tipp: Wenn’s ruckelt → unten auf <b>PERF</b> lassen.
+          </p>
         </div>
       </section>
 
@@ -87,9 +85,9 @@
         </header>
 
         <div class="row leftRow">
-          <button type="button" id="btnTalk" class="btn small pink">TALK</button>
-          <button type="button" id="btnMission" class="btn small yellow">START MISSION</button>
-          <button type="button" id="btnFocus" class="btn small">FOCUS</button>
+          <button type="button" id="btnTalk" class="btn small pink">Talk</button>
+          <button type="button" id="btnMission" class="btn small yellow">Start Mission</button>
+          <button type="button" id="btnFocus" class="btn small">Focus</button>
         </div>
 
         <div id="nodeList" class="list" aria-label="Nodes"></div>
@@ -107,28 +105,19 @@
             <h3 class="sideTitle pinkText" id="npcName">SIGNAL</h3>
             <div class="muted small" id="npcRole">Bewege dich zu einem NPC / Ort…</div>
           </div>
-          <button type="button" id="btnCloseRight" class="btn small">X</button>
+          <button type="button" id="btnCloseSignal" class="btn small">X</button>
         </header>
-
-        <!-- “Portrait” -->
-        <div id="npcPortrait" class="panel" style="height:120px; border-radius:12px;"></div>
-
         <div id="dialogText" class="dialog">Keine Daten empfangen.</div>
-        <div id="dialogChoices" class="choices"></div>
-
-        <div class="archive">
-          <div class="muted small" style="margin-bottom:6px">RUN LOG</div>
-          <div id="runLog" class="muted small"></div>
-        </div>
+        <div class="muted small" style="margin-top:auto">RUN LOG</div>
       </aside>
 
       <!-- MISSION HUD -->
       <header id="missionHud" class="hud missionHud hidden">
         <div class="chip panel">MISSION <b id="mHudType">—</b></div>
         <div class="chip panel">OBJECTIVE <b id="mHudObjective">—</b></div>
-        <div class="chip panel pink">TIMER <b id="mHudTimer">—</b></div>
+        <div class="chip panel pink" id="mHudTimerBox">TIMER <b id="mHudTimer">—</b></div>
         <div class="chip panel">SCORE <b id="mHudScore">0</b></div>
-        <div class="chip panel">STATUS <b id="mHudStatus">—</b></div>
+        <div class="chip panel">STATUS <b id="mHudAbility">—</b></div>
       </header>
 
       <!-- RESULT -->
@@ -154,6 +143,45 @@
 
       <div id="toast" class="toast hidden"></div>
     </div>
+
+    <div id="bootErrorBox"></div>
   </main>
+
+  <!-- BOOTLOADER: dynamisches Import mit Cache-Bust + echte Fehlermeldung -->
+  <script type="module">
+    const box = document.getElementById("bootErrorBox");
+    const show = (msg) => { box.style.display = "block"; box.textContent = msg; };
+
+    // Build-Stamp: änderbar, damit GH Pages sicher neu lädt
+    const BUILD = "2026-03-02-01";
+
+    // CSS cachebust ersetzen
+    const link = document.querySelector('link[rel="stylesheet"]');
+    if (link) link.href = `./css/style.css?v=${BUILD}`;
+
+    // Wenn bei dir (oder alten Projekten) ein Service Worker mit Scope "/" aktiv ist,
+    // kann er /City/* kaputt cachen. Dieser Loader zeigt dann wenigstens den echten Fehler.
+    try {
+      await import(`./js/core.js?v=${BUILD}`);
+      // core.js startet selbst (DOMContentLoaded/boot)
+    } catch (err) {
+      console.error("BOOT IMPORT FAILED:", err);
+      const hint =
+`BOOT ERROR: core.js konnte nicht geladen werden.
+
+Fehler:
+${String(err?.message || err)}
+
+Fix (auf Tablet/Handy):
+1) Browser → Website-Daten/Storage für nanitenshi.github.io löschen
+2) Seite neu öffnen
+
+Test:
+- Öffne: https://nanitenshi.github.io/City/js/core.js
+Wenn das nicht JS zeigt → Pfad/Deploy Problem.`;
+
+      show(hint);
+    }
+  </script>
 </body>
-  </html>
+</html>
